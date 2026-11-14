@@ -59,7 +59,7 @@ for (co, to), f in firms.items():
     if xid in no_fu and status == 'waiting': step = no_fu[xid][:90]
     if status == 'waiting' and not f['fu'] and xid not in no_fu and x.get('followup_body'):
         fu = dt.datetime.fromisoformat(fu_at[xid]) if xid in fu_at else weekday_fwd(f['sent'] + dt.timedelta(days=K.S['send']['follow_up_days']))
-        step = 'Automatic follow-up' if K.MODE == 'send' and x.get('approved') else 'Follow-up saved to Drafts on the day'
+        step = 'Automatic follow-up' if K.MODE == 'send' else 'Follow-up saved to Drafts on the day'
         if fu.date() == today: due_today.append((fu, co, to))
     elif status == 'waiting' and f['fu']: step = f'Followed up {f["fu"]:%d %b}; no more automatic emails'
     rl = text_by_co.get(co)

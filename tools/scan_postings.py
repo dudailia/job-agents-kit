@@ -1,4 +1,4 @@
-# Scans the public job-board APIs (Greenhouse, Lever, Ashby, SmartRecruiters, Personio, Recruitee) of every board linked in
+# Scans the public job-board APIs (Greenhouse, Lever, Ashby, Workable, SmartRecruiters, Personio, Recruitee) of every board linked in
 # data/research/*.csv for new postings whose title matches settings.postings.title (and not .exclude) in a place matching
 # settings.postings.places, and lists the ones not seen before (logs/postings-seen.json). Read-only HTTP; no forms, no logins.
 # usage: python3 -I tools/scan_postings.py [--needs]   (--needs: also list new postings in needs-me.md; used by the launchd job)
@@ -26,7 +26,9 @@ for p in glob.glob(f'{K.DATA}/research/*.csv'):
         for m in re.finditer(r'jobs\.smartrecruiters\.com/([\w-]+)', text): boards.add(('sr', m.group(1)))
         for m in re.finditer(r'([\w-]+)\.jobs\.personio\.(?:de|com)', text): boards.add(('personio', m.group(1)))
         for m in re.finditer(r'([\w-]+)\.recruitee\.com', text): boards.add(('recruitee', m.group(1)))
-boards -= {('gh', 'embed'), ('sr', 'oneclick-ui'), ('ashby', 'api')}
+        for m in re.finditer(r'apply\.workable\.com/([\w-]+)', text): boards.add(('workable', m.group(1)))
+        for m in re.finditer(r'\b([\w-]+)\.workable\.com', text): boards.add(('workable', m.group(1)))
+boards -= {('gh', 'embed'), ('sr', 'oneclick-ui'), ('ashby', 'api'), ('workable', 'j'), ('workable', 'api'), ('workable', 'apply'), ('workable', 'www')}
 found = []
 for kind, b in sorted(boards):
     jobs = []
@@ -55,6 +57,11 @@ for kind, b in sorted(boards):
     elif kind == 'recruitee':
         t = get(f'https://{b}.recruitee.com/api/offers/')
         try: jobs = [(j['title'], j.get('location', ''), j['careers_url']) for j in json.loads(t or '{}').get('offers', [])]
+        except Exception: pass
+    elif kind == 'workable':
+        t = get(f'https://apply.workable.com/api/v1/widget/accounts/{b}')
+        try: jobs = [(j['title'], ', '.join(x for x in (j.get('city'), j.get('country'), 'Remote' if j.get('telecommuting') else '') if x),
+                      j.get('url') or j.get('shortlink') or f"https://apply.workable.com/{b}/j/{j['shortcode']}") for j in json.loads(t or '{}').get('jobs', [])]
         except Exception: pass
     for title, loc, url in jobs:
         if TITLE.search(title) and not NOT.search(title) and (PLACE.search(loc or '') or PLACE.search(title)):

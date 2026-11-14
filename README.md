@@ -6,7 +6,7 @@ A kit for a careful, mostly unattended job search on a Mac. While you sleep:
 
 - a research shift (Claude Code) finds firms and postings and plans emails, using only facts you wrote down;
 - a checker holds every planned email to your own writing rules;
-- a night job saves the emails that are due to Mail's Drafts, inside each region's morning window;
+- a night job saves each email you approved to Mail's Drafts when it is due, inside each region's morning window;
 - a read-only email audit lists the emails that need an answer from you.
 
 In the morning you get `MORNING.md`, `TODAY.html` (what to do by hand), `OUTREACH-TRACKER.html` and `needs-reply.html`.
@@ -18,9 +18,11 @@ application forms.
 - **macOS and Apple Mail only.** Emails are drafted and sent through Mail.app with AppleScript, and the jobs are run by
   macOS launchd. It does not work on Windows, Linux, or with Gmail or Outlook in a browser. You can still use a Gmail or
   Outlook account, as long as it is added to Mail.app on the Mac. The Mac must be on, and you signed in, at night.
-- **Prepare mode is the default: nothing is ever sent until you change it.** In prepare mode every due email is only
-  saved to Mail's Drafts, for you to read and send yourself. Send mode (`send.mode: "send"` in your settings) sends only
-  the emails you marked `"approved": true`. Everything else is still only drafted.
+- **Prepare mode is the default: nothing is ever sent until you change it.** Only emails you marked `"approved": true`
+  are ever touched. An unapproved one waits. In prepare mode each approved email, when it is due, is only saved to Mail's
+  Drafts, for you to send yourself. Send mode (`send.mode: "send"` in your settings) sends the approved emails instead.
+  jev-job-search, with the patch in `jev-config/`, works the same way: it fills and checks each form and submits
+  nothing until you approve that form with `npx jev submit <id>` (`/daily approve <id>`).
 - **Everything about you is yours to fill in.** The kit ships with a fictional example person ("Alex Example").
   Before any real use, write your own settings, facts and never-apply list. If you use jev-job-search, write your own
   `profile.json` too, including the right-to-work and visa answers (`workAuthorization`: where you may work without
@@ -105,7 +107,9 @@ From a Mac with nothing installed. Each step says what it needs. Commands run in
    control Mail: allow it, or the night job cannot draft. `zsh launchd/install.sh --unload` removes them all.
 10. **Applications with jev-job-search** (optional). Follow `jev-config/README.md`: apply the patch, copy the templates
     into its `data/`, and fill in **your own** `profile.json`, including `workAuthorization` and the visa fields. Then
-    rehearse with `npx jev apply --dry --count 3` and read every answer before any run that submits.
+    rehearse with `npx jev apply --dry --count 3` and read every answer. With the patch, jev submits nothing on its
+    own: every run leaves each ready form open for you, `npx jev status` lists them, and only `npx jev submit <id>`
+    (`/daily approve <id>` in Claude Code) sends the one you approved.
 
 **Every morning:** read `MORNING.md` and `TODAY.html`. Approve a planned email by setting `"approved": true` in
 `data/emails.json`. In prepare mode, send the drafts yourself from Mail, then record each one with

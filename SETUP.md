@@ -9,10 +9,11 @@ and what every file is.
 2. `needs-reply.html` lists the emails where someone asked you for something and you have not answered.
 3. Read each planned email in TODAY.html under "Emails to approve". If it is right, set `"approved": true` for its id in
    `data/emails.json`; if not, fix it, or set `"hold"` to a reason.
-4. Prepare mode (the default): the night job saved the due emails to Mail's Drafts. Send the ones you want yourself, then
+4. Prepare mode (the default): the night job saved the approved emails that were due to Mail's Drafts (unapproved ones
+   are never drafted). Send the ones you want yourself, then
    record each with `python3 -I tools/sender.py --mark-sent <id>` so its follow-up is drafted on time.
 5. Send mode: only when every email and form answer you reviewed was right, set `send.mode` to `"send"` in
-   `profile/settings.json`. Approved emails then go out by themselves. Unapproved ones are still only drafted.
+   `profile/settings.json`. Approved emails then go out by themselves. Unapproved ones still wait, untouched.
 
 ## Safety switches
 
@@ -39,14 +40,14 @@ research shift runs only on a claude.ai subscription login, never an API key, an
 | `data/emails.json` | the email plan (format: `data/emails.example.json`) |
 | `data/today.json` | by-hand items for TODAY.html (format: `data/today.example.json`) |
 | `data/linkedin-notes.json`, `data/applications-log.csv`, `data/watch.json`, `data/cover-letters/`, `data/research/` | written by you or the research shift |
-| `tools/night_send.py` | the night job: drafts (prepare) or sends (send, approved only); `--draft-now <id>`, `--dry` |
+| `tools/night_send.py` | the night job: drafts (prepare) or sends (send) approved emails only; `--draft-now <id>` (drafts one email now, approved or not), `--dry` |
 | `tools/sender.py` | Mail scripts, outreach log, reply check; `--due`, `--mark-sent <id>` |
 | `tools/fu_rules.py` | follow-up rules after replies (out of office, apply on our site, polite no) |
 | `tools/check_msgs.py` | holds every planned email and note to your writing rules |
 | `tools/email_audit.py` | read-only audit of Mail: needs-reply.html |
 | `tools/build_today.py`, `tools/build_today_focus.py` | TODAY-all.html and TODAY.html |
 | `tools/build_tracker.py`, `tools/morning.py` | OUTREACH-TRACKER.html and MORNING.md |
-| `tools/scan_postings.py` | read-only scan of public job-board APIs |
+| `tools/scan_postings.py` | read-only scan of company-run job boards (Ashby, Greenhouse, Lever, Workable, and a few more) |
 | `tools/kit.py` | settings loader and shared safety checks; `--check` |
 | `research/night-research-prompt.md` | the research shift's instructions |
 | `launchd/` | job templates (`USERNAME` is filled in by `install.sh`) and the runners |

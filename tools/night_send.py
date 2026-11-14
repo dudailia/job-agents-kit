@@ -6,8 +6,9 @@
 #  - Each email goes on a weekday, inside its region's window in the recipient's local time (settings.regions, default
 #    08:00-08:50), at most send.per_run per run, send.daily_max per day and send.gap_minutes apart.
 #  - Never to an employer in profile/never-apply.md, never twice to one address.
-#  - PREPARE-ONLY is the default (settings.send.mode = "prepare"): every due email is saved to Mail's Drafts and nothing is
-#    sent. In "send" mode only emails with "approved": true are sent; the rest are still only drafted.
+#  - Only emails you approved ("approved": true in data/emails.json) are ever drafted or sent; an unapproved one waits.
+#  - PREPARE-ONLY is the default (settings.send.mode = "prepare"): each approved email that is due, and each due follow-up,
+#    is saved to Mail's Drafts for you to send yourself, and nothing is sent. In "send" mode they are sent instead.
 #  - No loops and no retries: Mail is launched at most once per run, hidden ("launch", never "activate"); if any Mail call
 #    fails, the error is logged and the run exits. A lock stops two runs from overlapping.
 #  - Before every Mail call the frontmost app is recorded; afterwards Mail is hidden and that app gets the front back.
@@ -166,7 +167,7 @@ try:
         n = call(DRAFTCOUNT, acc, K.S['mail']['drafts'])
         log(f"dry: Drafts in {acc} = {n}; front app now: {front()}")
         finish(0)
-    sending = [z for z in todo if K.MODE == 'send' and z[2].get('approved')]
+    sending = [z for z in todo if K.MODE == 'send']
     if sending and K.S['mail'].get('health_check', True):  # never send into a broken login
         h = call(HEALTH, acc, K.S['mail']['inbox'], timeout=120).split('|'); ob = int(h[0] or 0)
         age = int(h[1]) if len(h) > 1 and h[1].strip().lstrip('-').isdigit() else None
@@ -182,11 +183,11 @@ try:
         if kind == 'followup' and x['id'] in FR.overrides()[0]: S.outlog(x, kind, 'replied/cancelled: follow-up skipped'); continue
         subj = x['subject'] if kind == 'email' else x['followup_subject']; body = x['body'] if kind == 'email' else x['followup_body']
         att = x.get('attachments', []) if kind == 'email' else []
-        if K.MODE == 'send' and x.get('approved'):
+        if K.MODE == 'send':
             S.send(x['to'], subj, body, att); S.outlog(x, kind, 'sent'); log(f'SENT {kind} {x["company"]} <{x["to"]}> "{subj}"'); sent.append(subj)
         else:  # prepare-only: a draft in Mail, never sent
             r = S.draft(x['to'], subj, body, att); S.outlog(x, kind, 'drafted')
-            log(f'DRAFTED {kind} {x["company"]} <{x["to"]}> "{subj}": {r} ({"prepare mode" if K.MODE == "prepare" else "not approved"})')
+            log(f'DRAFTED {kind} {x["company"]} <{x["to"]}> "{subj}": {r} (prepare mode)')
         time.sleep(20)
     if drafts_due:  # one try each, logged; a failure is recorded and never retried in this run
         q = FR.load(FR.DRAFTQ, [])

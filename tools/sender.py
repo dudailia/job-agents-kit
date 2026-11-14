@@ -286,14 +286,15 @@ def locked_replies(E):
 def replied_ids(): return set(K.load_json(RSTATE, {}).get('replied', []))
 
 def due(E, now=None):
-    """(time, kind, email) for every first email and follow-up whose time has come. Reads files only."""
+    """(time, kind, email) for every first email and follow-up whose time has come. Reads files only. A first email is due
+    only once you approved it ("approved": true): an unapproved one is never drafted or sent, it waits for you."""
     now = now or K.now(); out = []
     NO_FU, FU_AT = FR.overrides()
     for x in E:
         if not x.get('slot'): continue
         t = dt.datetime.fromisoformat(x['slot']).replace(tzinfo=K.tz_of(x))
         if not company_done(x, 'email') and not x.get('hold'):
-            if t <= now: out.append((t, 'email', x))
+            if t <= now and x.get('approved'): out.append((t, 'email', x))
         elif company_sent(x, 'email') and not company_done(x, 'followup') and x['id'] not in NO_FU and x.get('followup_body'):
             t0 = first_sent_at(x)
             if x['id'] in FU_AT: fu = FU_AT[x['id']]  # moved after an out-of-office reply
@@ -317,4 +318,6 @@ if __name__ == '__main__':
         outlog(x, 'email', 'sent', when); print(f'recorded: {x["company"]} <{x["to"]}> sent {when:%F %H:%M}; its follow-up is now scheduled')
     else:
         for t, kind, x in due(E):
-            print(f'{t:%F %H:%M} {kind:8} {x["company"]} <{x["to"]}>' + ('' if x.get('approved') else '  (not approved: drafted only)'))
+            print(f'{t:%F %H:%M} {kind:8} {x["company"]} <{x["to"]}>  ({"sent" if K.MODE == "send" else "drafted"} on the next run)')
+        wait = [x for x in E if not x.get('approved') and not x.get('hold') and not company_done(x, 'email')]
+        if wait: print(f'{len(wait)} planned email(s) wait for your approval (set "approved": true): ' + ', '.join(x['id'] for x in wait))

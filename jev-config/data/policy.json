@@ -6,6 +6,7 @@
   "minScore": 0.5,
   "boards": [],
   "excludeEmployers": [],
+  "mode": "prepare",
   "documents": {
     "tailor": false,
     "cover": false

@@ -5,7 +5,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kit as K
 D = K.ROOT; now = K.now(); today = now.date(); since = dt.datetime.combine(today, dt.time(0, 0), K.TZ); zone = K.S['timezone']
 out = [f'# Morning summary, {today:%a %d %b %Y} ({now:%H:%M} {zone})', '',
-       f'**Mode:** {K.MODE} ({"emails are saved to Drafts, nothing is sent" if K.MODE == "prepare" else "approved emails are sent, the rest drafted"})',
+       f'**Mode:** {K.MODE} ({"approved emails are saved to Drafts, nothing is sent" if K.MODE == "prepare" else "approved emails are sent"}; unapproved ones wait for you)',
        f'**Outreach tracker:** [OUTREACH-TRACKER.html](file://{D}/OUTREACH-TRACKER.html) · **By hand today:** [TODAY.html](file://{D}/TODAY.html)', '']
 try:  # email audit counts (tools/email_audit.py)
     a = json.load(open(f'{K.LOGS}/email-audit-counts.json'))
@@ -62,7 +62,7 @@ out += ['', f'## Still due today: {len(later)}'] + [f"- {at(x):%H:%M} {x['compan
 tom = [x for x in pend if at(x).date() == today + dt.timedelta(days=1)]
 unapproved = sum(1 for x in pend if not x.get('approved'))
 out += ['', f'## Planned for tomorrow ({today + dt.timedelta(days=1):%d %b}): {len(tom)} first emails',
-        f'- emails waiting for your approval: {unapproved} (set "approved": true in data/emails.json after reading each one)',
+        f'- emails waiting for your approval: {unapproved}. They are not drafted until you set "approved": true in data/emails.json',
         f'- kill switch: {"~/STOP-AGENTS is PRESENT (nothing runs)" if os.path.exists(K.STOPFILE) else "off"}',
         '- TODAY.html has the items that need you.']
 open(f'{D}/MORNING.md', 'w', encoding='utf-8').write('\n'.join(out) + '\n')

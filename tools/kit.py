@@ -156,7 +156,7 @@ def check():
             if t.date() != day: break
         if not ok: warn.append(f'region {name}: its window {a:%H:%M}-{b:%H:%M} {r["tz"]} never falls inside your sender hours '
                                f'({NIGHT_START:%H:%M}-{SENDER_END:%H:%M} {S["timezone"]}), so nothing to it would ever go')
-    print(f'settings: {SETTINGS_FILE}\nmode: {MODE} ({"saves Mail drafts, sends nothing" if MODE == "prepare" else "sends approved emails, drafts the rest"})')
+    print(f'settings: {SETTINGS_FILE}\nmode: {MODE} ({"approved emails are saved to Mail Drafts, nothing is sent" if MODE == "prepare" else "approved emails are sent"}; unapproved ones wait)')
     print(f'never-apply: {len(NEVER)} names; regions: {", ".join(S["regions"]) or "none"}')
     print('\n'.join(f'warning: {w}' for w in warn) or 'no warnings')
     return not warn

@@ -1,0 +1,21 @@
+{
+ "_help": "Copy to data/today.json. common_answers are added to every item with \"common\": true. {name}, {email}, {phone}, {city}, {school}, {availability}, {cv_url} are filled from profile/settings.json. Set \"done\": true to drop an item from TODAY.html.",
+ "common_answers": [["Name", "{name}", true], ["Email", "{email}", true], ["Phone", "{phone}", true], ["Location", "{city}", true]],
+ "items": [
+  {
+   "id": "example-portal",
+   "title": "Example Ltd: Intern, Data (needs an account)",
+   "deadline": "Deadline 30 Jan",
+   "sort": "2030-01-30",
+   "url": "https://example.com/careers/123",
+   "facts": ["The posting asks for a CV and a short letter."],
+   "steps": ["Open the link and create an account.", "Upload your CV and the letter below.", "Fill the form with the answers below and submit."],
+   "letter": "",
+   "copies": [],
+   "common": true,
+   "answers": [["Earliest start", "{availability}", false]],
+   "warn": "",
+   "done": false
+  }
+ ]
+}

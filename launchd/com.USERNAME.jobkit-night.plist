@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>Label</key><string>com.USERNAME.jobkit-night</string>
+<key>ProgramArguments</key><array><string>/bin/zsh</string><string>/Users/USERNAME/job-agents-kit/launchd/run-night.sh</string></array>
+<key>WorkingDirectory</key><string>/Users/USERNAME/job-agents-kit</string>
+<key>StartCalendarInterval</key><array><dict><key>Minute</key><integer>0</integer></dict><dict><key>Minute</key><integer>15</integer></dict><dict><key>Minute</key><integer>30</integer></dict><dict><key>Minute</key><integer>45</integer></dict><dict><key>Hour</key><integer>8</integer><key>Minute</key><integer>50</integer></dict></array>
+<key>RunAtLoad</key><false/>
+<key>ProcessType</key><string>Background</string>
+<key>LowPriorityIO</key><true/>
+<key>Nice</key><integer>19</integer>
+<key>StandardOutPath</key><string>/Users/USERNAME/job-agents-kit/logs/night.out</string>
+<key>StandardErrorPath</key><string>/Users/USERNAME/job-agents-kit/logs/night.out</string>
+</dict></plist>

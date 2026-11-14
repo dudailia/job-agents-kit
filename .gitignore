@@ -1,0 +1,18 @@
+# personal settings and data: never committed
+profile/settings.json
+profile/facts.md
+data/*
+!data/*.example.json
+logs/
+needs-me.md
+needs-reply.html
+TODAY.html
+TODAY-all.html
+MORNING.md
+OUTREACH-TRACKER.html
+.env
+.env.*
+*.pdf
+__pycache__/
+.DS_Store
+launchd/local/

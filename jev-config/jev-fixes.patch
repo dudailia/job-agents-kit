@@ -1,0 +1,708 @@
+diff --git a/data/policy.example.json b/data/policy.example.json
+index 4c35ca1..6bdd0e8 100644
+--- a/data/policy.example.json
++++ b/data/policy.example.json
+@@ -7,5 +7,6 @@
+   "boards": [],
+   "excludeEmployers": ["Example Corp"],
+   "documents": { "tailor": false, "cover": false },
++  "focus": { "titles": [], "seasonFirst": [], "seasonLast": [], "placesFirst": [], "placesThen": [], "minScore": null },
+   "jevBudgetUsd": 0.5
+ }
+diff --git a/data/profile.example.json b/data/profile.example.json
+index a3f488a..ded07a0 100644
+--- a/data/profile.example.json
++++ b/data/profile.example.json
+@@ -97,7 +97,10 @@
+     ],
+     "authorizedWithSponsorshipLater": [],
+     "requiresSponsorshipElsewhere": true,
+-    "statement": "Canadian citizen, authorized to work in Canada without sponsorship. I would need sponsorship to work in the United States."
++    "statement": "Canadian citizen, authorized to work in Canada without sponsorship. I would need sponsorship to work in the United States.",
++    "visaType": "",
++    "visaTypeNames": [],
++    "neverVisaTypes": []
+   },
+   "demographics": {
+     "gender": "Female",
+diff --git a/docs/DAILY.md b/docs/DAILY.md
+index 01d1683..0234788 100644
+--- a/docs/DAILY.md
++++ b/docs/DAILY.md
+@@ -40,6 +40,7 @@ cp data/policy.example.json data/policy.json
+ | `boards` | Job boards by name: `greenhouse`, `lever`, `ashby`, `workday` and so on | every board the tool fills |
+ | `excludeEmployers` | Employers the daily run never applies to. A name matches any company that contains it | none |
+ | `documents` | `tailor`: a resume written for each job. `cover`: a cover letter where a form has a box for one | your profile's own resume |
++| `focus` | Which jobs come first, and a lower fit floor for them. See below | score, then most recent |
+ | `jevBudgetUsd` | The most **JEV** may cost in a day. The run stops there. Claude is not counted: it runs on your subscription, or on your own API key, which this number does not limit | 0.50 |
+ 
+ Every job is checked against this file in code before its form is opened.
+@@ -50,6 +51,37 @@ read, and it will not guess.
+ 
+ `data/policy.json` is git-ignored.
+ 
++### Which jobs come first
++
++With no `focus` block, queued jobs are tried highest fit score first, and
++ties go to the most recent posting. A `focus` block changes the order:
++
++```json
++"focus": {
++  "titles": ["machine learning", "data scien"],
++  "seasonFirst": ["fall", "off-?cycle"],
++  "seasonLast": ["summer"],
++  "placesFirst": ["new york"],
++  "placesThen": ["remote"],
++  "minScore": 0.35
++}
++```
++
++Each entry is a piece of a regular expression, matched without regard to
++case at the start of a word. The order is:
++
++1. Season: a job whose title or terms match `seasonFirst`, then one that
++   matches neither list, then one that matches `seasonLast`.
++2. A title that matches `titles` before one that does not.
++3. Place: a location that matches `placesFirst`, then `placesThen`, then
++   the rest.
++4. Then fit score, then the most recent posting, as before.
++
++`minScore` is a fit floor for a job in focus or in a first season. It is
++used only when it is lower than the policy's own `minScore`, so the rating
++does not keep the roles you want most out of the run. `null` keeps one floor
++for every job. Every list left empty changes nothing.
++
+ ## 2. Rehearse
+ 
+ ```bash
+diff --git a/docs/SETUP.md b/docs/SETUP.md
+index 4b869ce..a677af3 100644
+--- a/docs/SETUP.md
++++ b/docs/SETUP.md
+@@ -71,6 +71,13 @@ important choices:
+   authorized and that you will need sponsorship, and postings there that
+   refuse sponsorship are dropped. `statement` is used verbatim when a form
+   asks you to explain.
++  `visaType` (for example `"F-1 CPT"`), `visaTypeNames` (how an option may
++  name it, such as `["F-1", "F1", "CPT"]`) and `neverVisaTypes` (such as
++  `["H-1B"]`) are optional. With `visaType` set, forms are told it is the type
++  to give and that you are currently authorized in
++  `authorizedWithSponsorshipLater` through it; an answer that names a type in
++  `neverVisaTypes` and not yours is left for you. Names match as whole words,
++  with or without hyphens and spaces. Left empty, nothing changes.
+ - `demographics`: answer as you want them answered, including "Prefer not
+   to say".
+ - `preferences.salaryExpectation`: leave empty to never volunteer a number.
+diff --git a/src/answers/resolve.ts b/src/answers/resolve.ts
+index 1960e3d..b78af24 100644
+--- a/src/answers/resolve.ts
++++ b/src/answers/resolve.ts
+@@ -12,7 +12,7 @@ import path from "node:path";
+ import { z } from "zod";
+ import { childEnv, DOCUMENTS, PATHS, WRITER, writerApi, writerBackend, writerModel } from "../config.js";
+ import type { QueueEntry } from "../jobs/queue.js";
+-import type { Profile } from "../profile/schema.js";
++import { visaLines, type Profile } from "../profile/schema.js";
+ import { BANK_DRAFTS, BANK_INTENTS } from "./bank.js";
+ import { answerContext, jobContext } from "./context.js";
+ import { fingerprintOf, Resolution, type OpenField } from "./memory.js";
+@@ -57,6 +57,7 @@ const SYSTEM = [
+ /** Everything about the candidate that is the same for every job: the voice guide, the facts and the starting drafts. */
+ export function candidateContext(profile: Profile): Record<string, unknown> {
+   const ctx = answerContext(profile, null, "");
++  const visa = visaLines(profile, 'leave the field and set verdict to "needs_review"');
+   return {
+     voice_rules: ctx.voice,
+     candidate: {
+@@ -70,6 +71,8 @@ export function candidateContext(profile: Profile): Record<string, unknown> {
+       preferences: profile.preferences,
+       workAuthorization: profile.workAuthorization,
+     },
++    // Only when the profile names a visa type, so what is remembered for every other profile stays valid.
++    ...(visa.length ? { visa_rules: visa } : {}),
+     /** Starting drafts for common questions. Adapt one to the question and the company; text in braces is for you to write. */
+     bank: Object.fromEntries(Object.keys(BANK_INTENTS).map((k) => [k, { asks: BANK_INTENTS[k], draft: BANK_DRAFTS[k] }])),
+   };
+diff --git a/src/forms/mapForm.ts b/src/forms/mapForm.ts
+index 1ea7593..0e38dd1 100644
+--- a/src/forms/mapForm.ts
++++ b/src/forms/mapForm.ts
+@@ -15,7 +15,7 @@ import type { JevClient } from "../jev/client.js";
+ import { choice, noul } from "../jev/questions.js";
+ import type { Answer, ChoiceAnswer, NoulAnswer, Questions } from "../jev/types.js";
+ import { ALL_KEYS, isProfileKey, isSpecialKey, profileFacts, valueFor, type FieldKey } from "../profile/fieldKeys.js";
+-import { monthName, sponsorshipLater, type Profile } from "../profile/schema.js";
++import { monthName, sponsorshipLater, visaLines, visaNamePattern, type Profile } from "../profile/schema.js";
+ import { BANK_INTENTS } from "../answers/bank.js";
+ import { countryOfLocations, locationTier } from "../jobs/hardFilters.js";
+ import type { Job } from "../jobs/normalize.js";
+@@ -66,6 +66,8 @@ export function buildFormState(profile: Profile, job: Job, dump: FieldsDump, fie
+         later.length
+           ? `The candidate may work without sponsorship only in: ${profile.workAuthorization.authorizedCountries.join(", ")}. They are also authorized to work now in: ${later.join(", ")}, but will need visa sponsorship there in the future. Never claim work authorization anywhere else.`
+           : `The candidate may work without sponsorship only in: ${profile.workAuthorization.authorizedCountries.join(", ")}. Never claim work authorization anywhere else.`,
++        // Only when the profile names a visa type, so the plans cached for every other profile stay valid.
++        ...visaLines(profile, "leave the field for the candidate and say so in reason"),
+         "Never write a cover letter.",
+         "Salary expectation is left blank or set to negotiable.",
+         "Marketing opt-ins are optional and left unchecked. Consent and acknowledgement boxes required to apply are checked.",
+@@ -90,7 +92,7 @@ export function buildFormState(profile: Profile, job: Job, dump: FieldsDump, fie
+ }
+ 
+ /** Raised whenever the gates below change, so a plan cached under the old rules is not reused. */
+-const PLAN_VERSION = 11;
++const PLAN_VERSION = 12;
+ 
+ /** A box that asks for somebody else's contact details: a reference, a supervisor, an emergency contact. Never the applicant's. */
+ const OTHER_PERSON = /\b(reference|referee|referr(?:al|er)|referred by|supervisor|manager|emergency|next of kin|recruiter|contact person|guardian|parent|spouse|alternate|secondary)\b/i;
+@@ -157,6 +159,20 @@ export function truthFor(category: Category, label: string, profile: Profile, jo
+   return category === "authorization" ? auth.authorized : category === "sponsorship" ? auth.requires_sponsorship : null;
+ }
+ 
++/**
++ * Why a value may not go in as the visa type, or null when it may: one that names a type the profile
++ * never gives (`neverVisaTypes`) and not the candidate's own is left for them. A plain Yes or No is
++ * not a type, and is judged by the right-to-work gate.
++ */
++export function visaRefusal(value: string, profile: Profile): string | null {
++  const w = profile.workAuthorization;
++  const never = visaNamePattern(w.neverVisaTypes ?? []);
++  if (!never || polarity(value) !== null || !never.test(value)) return null;
++  const own = visaNamePattern([w.visaType ?? "", ...(w.visaTypeNames ?? [])]);
++  if (own?.test(value)) return null;
++  return `"${value.slice(0, 30)}" names a visa type your profile never gives${w.visaType ? ` (yours is ${w.visaType})` : ""}, so this one is yours`;
++}
++
+ /** True when the person's standing answers say the tool may accept agreements for them. */
+ export const approvesAgreements = (profile: Profile): boolean => profile.answers.some((a) => /agreement|acknowledg|terms|attestation/i.test(a.question) && /\b(i agree|tick)\b/i.test(a.answer));
+ 
+@@ -165,6 +181,8 @@ export const approvesAgreements = (profile: Profile): boolean => profile.answers
+  * what the profile says for the country the question means. Used for JEV's picks and the writer's.
+  */
+ export function gateAnswer(f: Pick<DumpedField, "label" | "section" | "hint" | "kind">, value: string, profile: Profile, job: Job): string | null {
++  const visa = visaRefusal(value, profile);
++  if (visa) return visa;
+   const category = categoryOf(f);
+   if (category !== "authorization" && category !== "sponsorship") return null;
+   const truth = truthFor(category, f.label, profile, job);
+diff --git a/src/jobs/focus.ts b/src/jobs/focus.ts
+new file mode 100644
+index 0000000..6d7357d
+--- /dev/null
++++ b/src/jobs/focus.ts
+@@ -0,0 +1,95 @@
++/**
++ * Which queued jobs come first: the `focus` block of data/policy.json. The titles the person
++ * wants first, the seasons that go first and last, the places that go first and next, and a
++ * lower fit floor for a role in focus. Every list is empty by default, and then the queue is
++ * ordered by score and recency alone and the floor is the policy's own.
++ *
++ * This lives apart from the policy so the queue can read it without importing the policy,
++ * which imports the queue.
++ */
++import { existsSync, readFileSync, statSync } from "node:fs";
++import { z } from "zod";
++import { PATHS } from "../config.js";
++import type { QueueEntry } from "./queue.js";
++
++const compiles = (s: string): boolean => {
++  try {
++    new RegExp(s, "i");
++    return true;
++  } catch {
++    return false;
++  }
++};
++
++/** Case-insensitive regular expression fragments, each matched at the start of a word. */
++const Fragments = z.array(z.string().min(1).refine(compiles, { message: "not a valid regular expression" })).default([]);
++
++export const Focus = z.object({
++  /** Titles of the roles wanted first ("machine learning", "data scien"). */
++  titles: Fragments,
++  /** Seasons that go first, tried on the title and the terms ("winter", "co-?op"). */
++  seasonFirst: Fragments,
++  /** Seasons that go last ("summer"). A job that names neither goes between. */
++  seasonLast: Fragments,
++  /** Places that go first, tried on the locations ("new york"). */
++  placesFirst: Fragments,
++  /** Places that go next, before everywhere else. */
++  placesThen: Fragments,
++  /** The fit floor for a role in focus or a first-season role, when lower than the policy's `minScore`. Null keeps that floor for every job. */
++  minScore: z.number().min(0).max(1).nullable().default(null),
++});
++export type Focus = z.infer<typeof Focus>;
++
++/** No focus: the order and floor are the plain ones. */
++export const NO_FOCUS: Focus = Focus.parse({});
++
++let cached: { file: string; mtimeMs: number; focus: Focus } | null = null;
++
++/**
++ * The focus block of the policy file. A missing file, a file that is not valid JSON, or a focus
++ * block that is not valid all give no focus: the order of the queue is never an error. Read once
++ * per change of the file.
++ */
++export function loadFocus(file = PATHS.policy): Focus {
++  try {
++    if (!existsSync(file)) return NO_FOCUS;
++    const mtimeMs = statSync(file).mtimeMs;
++    if (cached && cached.file === file && cached.mtimeMs === mtimeMs) return cached.focus;
++    const raw = (JSON.parse(readFileSync(file, "utf8")) as { focus?: unknown } | null)?.focus;
++    const parsed = Focus.safeParse(raw ?? {});
++    const focus = parsed.success ? parsed.data : NO_FOCUS;
++    cached = { file, mtimeMs, focus };
++    return focus;
++  } catch {
++    return NO_FOCUS;
++  }
++}
++
++const patterns = new WeakMap<readonly string[], RegExp | null>();
++/** One pattern for a list of fragments, each at a word start. Null for an empty list, which matches nothing. */
++function anyOf(words: readonly string[]): RegExp | null {
++  if (patterns.has(words)) return patterns.get(words) ?? null;
++  const re = words.length ? new RegExp(`\\b(?:${words.join("|")})`, "i") : null;
++  patterns.set(words, re);
++  return re;
++}
++const said = (words: readonly string[], text: string): boolean => anyOf(words)?.test(text) ?? false;
++
++type Entry = Pick<QueueEntry, "job">;
++
++/** True when the title is one of the person's focus titles. */
++export const inFocus = (e: Entry, f: Focus = loadFocus()): boolean => said(f.titles, e.job.title);
++
++/** 0 for a job in a first season, 2 for one in a last season, 1 for any other. With no seasons set, every job is 1. */
++export function seasonRank(e: Entry, f: Focus = loadFocus()): 0 | 1 | 2 {
++  const text = `${e.job.title} ${(e.job.terms ?? []).join(" ")}`;
++  if (said(f.seasonFirst, text)) return 0;
++  return said(f.seasonLast, text) ? 2 : 1;
++}
++
++/** 0 for a job in a first place, 1 for one in a next place, 2 for anywhere else. With no places set, every job is 2. */
++export function placeRank(e: Entry, f: Focus = loadFocus()): 0 | 1 | 2 {
++  const text = (e.job.locations ?? []).join(" ; ");
++  if (said(f.placesFirst, text)) return 0;
++  return said(f.placesThen, text) ? 1 : 2;
++}
+diff --git a/src/jobs/queue.ts b/src/jobs/queue.ts
+index 97fa14e..7c3cfbb 100644
+--- a/src/jobs/queue.ts
++++ b/src/jobs/queue.ts
+@@ -8,6 +8,7 @@ import { z } from "zod";
+ import { PATHS } from "../config.js";
+ import { withStore, writeAtomic } from "../util/store.js";
+ import { Answer } from "../jev/types.js";
++import { inFocus, loadFocus, placeRank, seasonRank, type Focus } from "./focus.js";
+ import type { FitResult } from "./rate.js";
+ import { jobId, type Job } from "./normalize.js";
+ 
+@@ -179,9 +180,21 @@ export function entryFor(job: Job, fit: FitResult | null, preFilterReason: strin
+   };
+ }
+ 
+-/** Highest score first; ties go to the most recent posting. */
+-export function sortEntries(entries: QueueEntry[]): QueueEntry[] {
++/**
++ * The order jobs are tried in. With a focus block in the policy: first-season jobs, then those with
++ * no season, then last-season ones; within that, titles in focus first; then first places, next
++ * places, everywhere else. Then, as with no focus, highest score first, and ties go to the most
++ * recent posting.
++ */
++export function sortEntries(entries: QueueEntry[], focus: Focus = loadFocus()): QueueEntry[] {
+   return [...entries].sort((a, b) => {
++    const season = seasonRank(a, focus) - seasonRank(b, focus);
++    if (season) return season;
++    const fa = inFocus(a, focus) ? 1 : 0;
++    const fb = inFocus(b, focus) ? 1 : 0;
++    if (fb !== fa) return fb - fa;
++    const place = placeRank(a, focus) - placeRank(b, focus);
++    if (place) return place;
+     const sa = a.fit?.score ?? -1;
+     const sb = b.fit?.score ?? -1;
+     if (sb !== sa) return sb - sa;
+diff --git a/src/profile/schema.ts b/src/profile/schema.ts
+index 2c07b79..6faee90 100644
+--- a/src/profile/schema.ts
++++ b/src/profile/schema.ts
+@@ -111,6 +111,16 @@ export const ProfileSchema = z.object({
+     requiresSponsorshipElsewhere: z.boolean(),
+     /** One sentence, used verbatim when a form asks to explain status. */
+     statement: z.string(),
++    /**
++     * The visa or permit the candidate works on where they need one ("F-1 CPT"). When set, forms
++     * and the writer are told it is the type to give, and a country in `authorizedWithSponsorshipLater`
++     * is one where they are currently authorized through it. Unset adds no rule.
++     */
++    visaType: z.string().optional(),
++    /** How an option may name `visaType` ("F-1", "F1", "CPT"). Matched as whole words, hyphens and spaces optional. */
++    visaTypeNames: z.array(z.string()).optional(),
++    /** Visa types never given as the candidate's ("H-1B"). An answer that names one and not `visaType` is left for the candidate. */
++    neverVisaTypes: z.array(z.string()).optional(),
+   }),
+   demographics: z.object({
+     gender: z.string(),
+@@ -174,6 +184,52 @@ export function sponsorshipLater(profile: Pick<Profile, "workAuthorization">): s
+   return profile.workAuthorization.authorizedWithSponsorshipLater ?? [];
+ }
+ 
++/**
++ * A whole-word, case-insensitive pattern for any of these names, with hyphens and spaces optional
++ * between their parts: "H-1B" matches "H1B", "h-1b" and "H 1B", but not "H-1B1" or "BH1B". Null when no name is given.
++ */
++export function visaNamePattern(names: readonly string[]): RegExp | null {
++  const parts = names
++    .map((n) => n.trim().toLowerCase())
++    .filter(Boolean)
++    .map((n) =>
++      n
++        .split(/[-\s]+/)
++        .filter(Boolean)
++        // Within a part, a hyphen or space may also come where letters meet digits: "h1b" is "h-1-b".
++        .map((t) => t.split(/(?<=[a-z])(?=\d)|(?<=\d)(?=[a-z])/).map((x) => x.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")).join("[-\\s]?"))
++        .join("[-\\s]*"),
++    )
++    .filter(Boolean);
++  return parts.length ? new RegExp(`(?<![a-z0-9])(?:${parts.join("|")})(?![a-z0-9])`, "i") : null;
++}
++
++/**
++ * The visa rules the profile sets, or null when it names no visa type. `own` matches the
++ * candidate's own type or any of its names; `never` matches a type never given as theirs.
++ */
++export function visaRules(profile: Pick<Profile, "workAuthorization">): { type: string; names: string[]; never: string[] } | null {
++  const w = profile.workAuthorization;
++  const type = w.visaType?.trim();
++  if (!type) return null;
++  return { type, names: (w.visaTypeNames ?? []).map((n) => n.trim()).filter(Boolean), never: (w.neverVisaTypes ?? []).map((n) => n.trim()).filter(Boolean) };
++}
++
++/**
++ * The lines that tell a writer about the visa type, empty when the profile names none. `leave` is
++ * what to do with a field no option of which names the type.
++ */
++export function visaLines(profile: Pick<Profile, "workAuthorization">, leave: string): string[] {
++  const v = visaRules(profile);
++  if (!v) return [];
++  const later = sponsorshipLater(profile);
++  const names = [v.type, ...v.names.filter((n) => n.toLowerCase() !== v.type.toLowerCase())];
++  return [
++    ...(later.length ? [`In ${later.join(", ")} the candidate is currently authorized to work, through ${v.type}, so a question whether they are currently authorized to work there is Yes.`] : []),
++    `The visa type is ${v.type}.${v.never.length ? ` Never choose or write ${v.never.join(" or ")} as the type.` : ""} If no option names ${names.join(" or ")}, ${leave}.`,
++  ];
++}
++
+ /**
+  * The candidate's standing in the United States. Most postings on the lists are American and many
+  * refuse sponsorship, so discovery needs to know whether that rules the candidate out.
+diff --git a/src/report/server.ts b/src/report/server.ts
+index b624b25..9ef2d5f 100644
+--- a/src/report/server.ts
++++ b/src/report/server.ts
+@@ -8,11 +8,12 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
+ import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+ import { z } from "zod";
+ import { DAILY, PATHS, REPORT } from "../config.js";
++import { loadFocus } from "../jobs/focus.js";
+ import { loadQueue, mutateQueue, Response as ReplyKind, RUN_OWNED, updateEntry } from "../jobs/queue.js";
+ import { loadRows, saveRows, upsertEntry } from "../log/csv.js";
+ import { loadDaily, localDay, requestStop, stopRequested } from "../run/daily.js";
+ import { settleReview } from "../run/inbox.js";
+-import { loadPolicy, Policy } from "../run/policy.js";
++import { keepFocus, loadPolicy, Policy } from "../run/policy.js";
+ import { installSchedule, nextRun, removeSchedule, scheduleStatus } from "../run/schedule.js";
+ import { currentRun, withStore, writeAtomic } from "../util/store.js";
+ import { buildReport, StatusChange } from "./data.js";
+@@ -148,7 +149,8 @@ export function startReportServer(port: number = REPORT.port): Promise<string> {
+         return json(res, { ok: await showForm(p.data.id) });
+       }
+       if (url.pathname === "/api/policy") {
+-        const p = Policy.safeParse(body);
++        // The Automation screen has no boxes for the focus block, so a save keeps the one in the file.
++        const p = Policy.safeParse(keepFocus(body, loadFocus()));
+         if (!p.success) return bad(p.error);
+         writeAtomic(PATHS.policy, JSON.stringify(p.data, null, 2) + "\n");
+         console.log("daily policy saved");
+diff --git a/src/run/daily.ts b/src/run/daily.ts
+index 2e61053..ed4ef7a 100644
+--- a/src/run/daily.ts
++++ b/src/run/daily.ts
+@@ -185,7 +185,7 @@ export async function dailyRun(policy: Policy, o: { target?: number; maxAttempts
+       // A fresh gate each time: it answers for this one job, with today's accounts as they are now.
+       return deps.gate()(e.job.url) === null;
+     };
+-    const suitable = sortEntries(entries.filter((e) => e.status === "queued")).filter(may);
++    const suitable = sortEntries(entries.filter((e) => e.status === "queued"), policy.focus).filter(may);
+     if (!suitable.length) return end("no suitable job is left in the queue");
+ 
+     // Two submissions to one board are minutes apart. The best job whose board is free goes now; if none is, the run waits for the first.
+diff --git a/src/run/policy.ts b/src/run/policy.ts
+index 9391726..fa6a21b 100644
+--- a/src/run/policy.ts
++++ b/src/run/policy.ts
+@@ -6,6 +6,7 @@
+ import { existsSync, readFileSync } from "node:fs";
+ import { z } from "zod";
+ import { DAILY, DISCOVER, PATHS } from "../config.js";
++import { Focus, inFocus, seasonRank } from "../jobs/focus.js";
+ import type { QueueEntry } from "../jobs/queue.js";
+ 
+ export const Policy = z.object({
+@@ -24,6 +25,8 @@ export const Policy = z.object({
+   excludeEmployers: z.array(z.string()).default([]),
+   /** A resume written for each job, and a cover letter where a form has a box for one. */
+   documents: z.object({ tailor: z.boolean().default(false), cover: z.boolean().default(false) }).prefault({}),
++  /** Which jobs come first, and a lower fit floor for them. Empty means score, then recency, and `minScore` for every job. */
++  focus: Focus.prefault({}),
+   /** The most JEV may cost in one day. The run stops when it is reached. */
+   jevBudgetUsd: z.number().min(0).default(DAILY.jevBudgetUsd),
+ });
+@@ -43,10 +46,18 @@ export function policyRefuses(e: QueueEntry, p: Policy): string | null {
+   const excluded = p.excludeEmployers.find((x) => x.trim() && company.includes(x.trim().toLowerCase()));
+   if (excluded) return `you excluded ${excluded}`;
+   if (p.boards.length && !p.boards.includes(e.job.ats)) return `${e.job.ats} is not one of your boards`;
+-  if ((e.fit?.score ?? 0) < p.minScore) return `its fit score is under ${p.minScore}`;
++  // A role in focus, or one in a first season, needs only the focus floor, when that is lower than the policy's.
++  const focusFloor = p.focus.minScore;
++  const floor = focusFloor !== null && (inFocus(e, p.focus) || seasonRank(e, p.focus) === 0) ? Math.min(p.minScore, focusFloor) : p.minScore;
++  if ((e.fit?.score ?? 0) < floor) return `its fit score is under ${floor}`;
+   const tier = e.fit?.locationTier;
+   if (p.where.length && !(tier && (p.where as string[]).includes(tier))) return `it is not in ${p.where.join(", ")}`;
+   const level = (e.fit?.answers.level as { choice?: string } | undefined)?.choice;
+   if (p.levels.length && !(level && (p.levels as string[]).includes(level))) return `it is not ${p.levels.join(" or ")}`;
+   return null;
+ }
++
++/** A policy sent by a page that has no box for the focus block keeps the block the file already holds. */
++export function keepFocus(sent: unknown, kept: Focus): unknown {
++  return sent && typeof sent === "object" && !("focus" in sent) ? { ...sent, focus: kept } : sent;
++}
+diff --git a/tests/focusOrder.test.ts b/tests/focusOrder.test.ts
+new file mode 100644
+index 0000000..7bf38f1
+--- /dev/null
++++ b/tests/focusOrder.test.ts
+@@ -0,0 +1,127 @@
++import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
++import os from "node:os";
++import path from "node:path";
++import { describe, expect, it } from "vitest";
++import { Focus, inFocus, loadFocus, NO_FOCUS, placeRank, seasonRank } from "../src/jobs/focus.js";
++import { sortEntries, type QueueEntry } from "../src/jobs/queue.js";
++import { keepFocus, Policy, policyRefuses } from "../src/run/policy.js";
++
++const job = (title: string, score: number, over: { terms?: string[]; locations?: string[]; postedAt?: string } = {}): QueueEntry =>
++  ({
++    job: { id: `${title}|${score}|${over.postedAt ?? ""}|${(over.locations ?? []).join()}`, title, company: "Example Corp", url: "https://jobs.example.com/1", ats: "greenhouse", terms: over.terms ?? [], locations: over.locations ?? ["Springfield"], postedAt: over.postedAt ?? "2026-11-01" },
++    fit: { score, locationTier: "us", answers: {} },
++  }) as unknown as QueueEntry;
++
++const focus = Focus.parse({
++  titles: ["machine learning", "data scien"],
++  seasonFirst: ["fall", "off-?cycle"],
++  seasonLast: ["summer"],
++  placesFirst: ["new york"],
++  placesThen: ["remote"],
++  minScore: 0.3,
++});
++
++describe("with no focus", () => {
++  it("orders by score, then the most recent posting, as before", () => {
++    const entries = [
++      job("Software Engineer Intern", 0.6, { postedAt: "2026-10-01" }),
++      job("Machine Learning Intern", 0.4, { terms: ["Fall 2026"], locations: ["New York, NY"] }),
++      job("Backend Intern", 0.6, { postedAt: "2026-11-02" }),
++      job("Data Science Intern", 0.9, { terms: ["Summer 2026"] }),
++    ];
++    const titles = (f: Focus) => sortEntries(entries, f).map((e) => e.job.title);
++    expect(titles(NO_FOCUS)).toEqual(["Data Science Intern", "Backend Intern", "Software Engineer Intern", "Machine Learning Intern"]);
++    expect(titles(Focus.parse({}))).toEqual(titles(NO_FOCUS));
++  });
++
++  it("ranks every job the same and puts nothing in focus", () => {
++    const e = job("Machine Learning Intern", 0.5, { terms: ["Summer"], locations: ["New York, NY"] });
++    expect(inFocus(e, NO_FOCUS)).toBe(false);
++    expect(seasonRank(e, NO_FOCUS)).toBe(1);
++    expect(placeRank(e, NO_FOCUS)).toBe(2);
++  });
++
++  it("keeps the policy's own floor", () => {
++    const p = Policy.parse({ minScore: 0.5 });
++    expect(p.focus).toEqual(NO_FOCUS);
++    expect(policyRefuses(job("Machine Learning Intern", 0.4, { terms: ["Fall 2026"] }), p)).toMatch(/under 0.5/);
++    expect(policyRefuses(job("Machine Learning Intern", 0.5), p)).toBeNull();
++  });
++});
++
++describe("with a focus block", () => {
++  it("matches titles, seasons and places at a word start, without regard to case", () => {
++    expect(inFocus(job("Senior MACHINE LEARNING Intern", 0.5), focus)).toBe(true);
++    expect(inFocus(job("Data Scientist Intern", 0.5), focus)).toBe(true);
++    expect(inFocus(job("Metadata Science Intern", 0.5), focus)).toBe(false);
++    expect(seasonRank(job("Intern", 0.5, { terms: ["Off-cycle 2026"] }), focus)).toBe(0);
++    expect(seasonRank(job("Fall Intern", 0.5), focus)).toBe(0);
++    expect(seasonRank(job("Intern", 0.5, { terms: ["Summer 2026"] }), focus)).toBe(2);
++    expect(seasonRank(job("Intern", 0.5), focus)).toBe(1);
++    expect(placeRank(job("Intern", 0.5, { locations: ["New York, NY"] }), focus)).toBe(0);
++    expect(placeRank(job("Intern", 0.5, { locations: ["Remote"] }), focus)).toBe(1);
++    expect(placeRank(job("Intern", 0.5, { locations: ["Springfield"] }), focus)).toBe(2);
++  });
++
++  it("orders by season, then focus titles, then place, then score, then recency", () => {
++    const sorted = sortEntries(
++      [
++        job("Software Engineer Intern", 0.9, { terms: ["Summer 2026"], locations: ["New York, NY"] }),
++        job("Software Engineer Intern", 0.8, { locations: ["Springfield"] }),
++        job("Software Engineer Intern", 0.5, { locations: ["New York, NY"] }),
++        job("Machine Learning Intern", 0.4, { locations: ["Springfield"] }),
++        job("Machine Learning Intern", 0.4, { locations: ["Remote"], postedAt: "2026-10-01" }),
++        job("Machine Learning Intern", 0.4, { locations: ["Remote"], postedAt: "2026-11-05" }),
++        job("Software Engineer Intern", 0.3, { terms: ["Fall 2026"] }),
++      ],
++      focus,
++    );
++    expect(sorted.map((e) => `${e.job.title} ${e.fit?.score} ${e.job.locations[0]} ${e.job.postedAt}`)).toEqual([
++      "Software Engineer Intern 0.3 Springfield 2026-11-01",
++      "Machine Learning Intern 0.4 Remote 2026-11-05",
++      "Machine Learning Intern 0.4 Remote 2026-10-01",
++      "Machine Learning Intern 0.4 Springfield 2026-11-01",
++      "Software Engineer Intern 0.5 New York, NY 2026-11-01",
++      "Software Engineer Intern 0.8 Springfield 2026-11-01",
++      "Software Engineer Intern 0.9 New York, NY 2026-11-01",
++    ]);
++  });
++
++  it("lowers the floor for a role in focus or a first season, and only down", () => {
++    const p = Policy.parse({ minScore: 0.5, focus });
++    expect(policyRefuses(job("Machine Learning Intern", 0.35), p)).toBeNull();
++    expect(policyRefuses(job("Software Engineer Intern", 0.35, { terms: ["Fall 2026"] }), p)).toBeNull();
++    expect(policyRefuses(job("Machine Learning Intern", 0.2), p)).toMatch(/under 0.3/);
++    expect(policyRefuses(job("Software Engineer Intern", 0.45, { terms: ["Summer 2026"] }), p)).toMatch(/under 0.5/);
++    const higher = Policy.parse({ minScore: 0.2, focus: { ...focus, minScore: 0.6 } });
++    expect(policyRefuses(job("Machine Learning Intern", 0.3), higher)).toBeNull();
++  });
++
++  it("is refused in a policy when a pattern does not compile", () => {
++    expect(Policy.safeParse({ focus: { titles: ["(unclosed"] } }).success).toBe(false);
++  });
++});
++
++describe("the focus in the policy file", () => {
++  it("is read from the file, and a missing or broken file gives no focus", () => {
++    const dir = mkdtempSync(path.join(os.tmpdir(), "jev-focus-"));
++    try {
++      const file = path.join(dir, "policy.json");
++      expect(loadFocus(file)).toEqual(NO_FOCUS);
++      writeFileSync(file, JSON.stringify({ version: 1, focus: { titles: ["machine learning"], placesFirst: ["new york"] } }));
++      expect(loadFocus(file)).toMatchObject({ titles: ["machine learning"], placesFirst: ["new york"], minScore: null });
++      const other = path.join(dir, "broken.json");
++      writeFileSync(other, "{ not json");
++      expect(loadFocus(other)).toEqual(NO_FOCUS);
++      writeFileSync(other, JSON.stringify({ focus: { titles: "machine learning" } }));
++      expect(loadFocus(other)).toEqual(NO_FOCUS);
++    } finally {
++      rmSync(dir, { recursive: true, force: true });
++    }
++  });
++
++  it("is kept when a page that has no box for it saves the policy", () => {
++    expect(keepFocus({ target: 5 }, focus)).toEqual({ target: 5, focus });
++    expect(keepFocus({ target: 5, focus: NO_FOCUS }, focus)).toEqual({ target: 5, focus: NO_FOCUS });
++  });
++});
+diff --git a/tests/visaType.test.ts b/tests/visaType.test.ts
+new file mode 100644
+index 0000000..2838d32
+--- /dev/null
++++ b/tests/visaType.test.ts
+@@ -0,0 +1,90 @@
++import { readFileSync } from "node:fs";
++import { describe, expect, it } from "vitest";
++import { ProfileSchema, visaNamePattern, type Profile } from "../src/profile/schema.js";
++import { buildFormState, gateAnswer, planField } from "../src/forms/mapForm.js";
++import { buildSystem, candidateContext, contextFingerprint } from "../src/answers/resolve.js";
++import type { DumpedField, FieldsDump } from "../src/forms/fields.js";
++import type { Job } from "../src/jobs/normalize.js";
++
++const example = ProfileSchema.parse(JSON.parse(readFileSync(new URL("../data/profile.example.json", import.meta.url), "utf8")));
++const withVisa = (over: Partial<Profile["workAuthorization"]>): Profile => ({ ...example, workAuthorization: { ...example.workAuthorization, ...over } });
++/** Authorized in Canada, and in the US now on F-1 CPT, needing sponsorship later; never H-1B as the type. */
++const student = withVisa({ authorizedWithSponsorshipLater: ["United States"], visaType: "F-1 CPT", visaTypeNames: ["F-1", "CPT"], neverVisaTypes: ["H-1B"] });
++
++const job = { id: "j", source: "t", company: "Example Corp", title: "Software Engineer Intern", url: "https://jobs.example.com/1", ats: "greenhouse", locations: ["New York, NY"], postedAt: null, terms: [], sponsorship: "unknown", degrees: [], category: null } as Job;
++const field = (over: Partial<DumpedField>): DumpedField => ({ id: "f0", widget: "", selector: "#x", kind: "text", name: "", label: "", hint: "", placeholder: "", required: true, value: "", options: [], accept: "", maxLength: null, autocomplete: "", buttonGroup: false, section: "", ...over });
++const visaQ = field({ kind: "radio", label: "Which visa type do you hold?" });
++const dump = { url: "https://jobs.example.com/1/apply", title: "Apply", context: "", fields: [] } as unknown as FieldsDump;
++
++describe("visa names", () => {
++  it("match as whole words, with or without hyphens and spaces", () => {
++    const re = visaNamePattern(["H-1B"]);
++    for (const v of ["H1B", "h-1b", "H 1B", "an H-1B visa"]) expect(re?.test(v), v).toBe(true);
++    for (const v of ["H-1B1", "BH1B", "H-2B"]) expect(re?.test(v), v).toBe(false);
++    expect(visaNamePattern(["F-1 CPT"])?.test("F1 CPT")).toBe(true);
++    expect(visaNamePattern(["CPT"])?.test("acceptable")).toBe(false);
++    expect(visaNamePattern([])).toBeNull();
++    expect(visaNamePattern(["  "])).toBeNull();
++  });
++});
++
++describe("the visa type gate", () => {
++  it("refuses a type the profile never gives, unless the answer names the candidate's own", () => {
++    for (const v of ["H1B", "H-1B", "H-1B visa"]) expect(gateAnswer(visaQ, v, student, job), v).toMatch(/never gives/);
++    expect(gateAnswer(visaQ, "F1", student, job)).toBeNull();
++    expect(gateAnswer(visaQ, "CPT", student, job)).toBeNull();
++    expect(gateAnswer(visaQ, "F-1 CPT, then H-1B later", student, job)).toBeNull();
++    expect(gateAnswer(visaQ, "TN", student, job)).toBeNull();
++  });
++
++  it("leaves a plain Yes or No to the right-to-work gate", () => {
++    const sponsorQ = field({ kind: "radio", label: "Will you now or in the future require H-1B sponsorship?" });
++    expect(gateAnswer(sponsorQ, "Yes, H-1B", student, job)).toBeNull();
++    expect(gateAnswer(sponsorQ, "No", student, job)).toMatch(/does not match the profile/);
++  });
++
++  it("holds a picked option that names a forbidden type for the candidate", () => {
++    const options = [{ value: "a", label: "H-1B" }, { value: "b", label: "F-1 (CPT/OPT)" }];
++    const f = field({ kind: "select", label: "Which visa type do you hold?", options });
++    const pick = (choice: string) => ({ type: "choice", choice, confidence: 0.99, probabilities: {} }) as never;
++    expect(planField(f, pick("o0"), student, job)).toMatchObject({ action: "review", note: expect.stringMatching(/never gives/) });
++    expect(planField(f, pick("o1"), student, job).value).toBe("b");
++  });
++
++  it("refuses nothing new when the profile names no type", () => {
++    for (const v of ["H1B", "H-1B visa", "F1"]) expect(gateAnswer(visaQ, v, example, job), v).toBeNull();
++  });
++});
++
++describe("the writer's visa lines", () => {
++  const rulesOf = (p: Profile) => (buildFormState(p, job, dump, []).candidate as { rules: string[] }).rules;
++
++  it("are in the form state and the writer's context only when a visa type is set", () => {
++    expect(rulesOf(example).join(" ")).not.toMatch(/visa type/i);
++    expect(candidateContext(example)).not.toHaveProperty("visa_rules");
++    expect(buildSystem(example)).not.toMatch(/visa_rules/);
++
++    const rules = rulesOf(student).join("\n");
++    expect(rules).toMatch(/In United States the candidate is currently authorized to work, through F-1 CPT, so a question whether they are currently authorized to work there is Yes/);
++    expect(rules).toMatch(/The visa type is F-1 CPT\. Never choose or write H-1B as the type\. If no option names F-1 CPT or F-1 or CPT, leave the field for the candidate/);
++    const visa = candidateContext(student).visa_rules as string[];
++    expect(visa.join("\n")).toMatch(/currently authorized to work, through F-1 CPT/);
++    expect(visa.join("\n")).toMatch(/set verdict to "needs_review"/);
++  });
++
++  it("leave the writer's context as before when the visa fields are empty", () => {
++    const blank = withVisa({ visaType: "", visaTypeNames: [], neverVisaTypes: [] });
++    expect(candidateContext(blank)).not.toHaveProperty("visa_rules");
++    expect(rulesOf(blank)).toEqual(rulesOf(example));
++    const { visaType: _a, visaTypeNames: _b, neverVisaTypes: _c, ...older } = example.workAuthorization;
++    const before = { ...example, workAuthorization: older };
++    expect(rulesOf(before)).toEqual(rulesOf(example));
++    expect(contextFingerprint(before)).not.toBe(contextFingerprint(student));
++  });
++
++  it("say nothing about current authorization without a country that needs sponsorship later", () => {
++    const rules = rulesOf(withVisa({ visaType: "TN" })).join("\n");
++    expect(rules).toMatch(/The visa type is TN\. If no option names TN, leave the field/);
++    expect(rules).not.toMatch(/currently authorized/);
++  });
++});

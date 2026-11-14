@@ -1,0 +1,102 @@
+{
+  "_help": "Copy this file to profile/settings.json and fill it in. Keys starting with _ are ignored. Every tool reads this file; nothing personal is written in the code. Check it with: python3 -I tools/kit.py --check",
+
+  "candidate": {
+    "name": "Alex Example",
+    "first_name": "Alex",
+    "email": "alex@example.com",
+    "phone": "",
+    "city": "London",
+    "school": "Example University",
+    "_school_portal": "Your university's own job portal, if it has one. Firms that recruit through it may expect you to apply there first; the research shift holds those and asks you.",
+    "school_portal": "",
+    "_program": "What you call the placement in your emails: internship, placement, work term, co-op.",
+    "program": "internship",
+    "_availability": "Written exactly as every email must state it, for example: six months, from <month> to <month> <year>",
+    "availability": "",
+    "cv_url": "",
+    "_situation": "One line for the email triage prompt: who you are and what you are looking for.",
+    "situation": "a student looking for an internship"
+  },
+
+  "_timezone": "Your own time zone (use your Mac's). The sender hours, the daily cap and every log are in it.",
+  "timezone": "Europe/London",
+  "_hours": "Sender hours, your time: Mail is touched only from night_start to sender_end; research and other work stop at work_end.",
+  "hours": { "night_start": "00:30", "work_end": "05:00", "sender_end": "09:00" },
+
+  "send": {
+    "_mode": "prepare = every due email is saved to Mail's Drafts and NOTHING is sent (the default). send = emails with \"approved\": true are sent; the rest are still only drafted.",
+    "mode": "prepare",
+    "daily_max": 20,
+    "per_run": 3,
+    "gap_minutes": 4,
+    "follow_up_days": 7,
+    "late_minutes": 50,
+    "_end_date": "Optional YYYY-MM-DD: after this day the night job stops touching Mail.",
+    "end_date": "",
+    "inbox_checks": ["06:00", "07:45", "before follow-ups"],
+    "_holiday": "Optional: follow-ups that would fall between from and to (YYYY-MM-DD) go on resume instead, same local time.",
+    "holiday": { "from": "", "to": "", "resume": "" }
+  },
+
+  "_default_window": "Recipient-local send window for a region that names none: weekdays, from the first time to the second.",
+  "default_window": ["08:00", "08:50"],
+  "_regions": "Every email names one region. window is recipient-local time. A region whose window never falls inside your sender hours never sends: kit.py --check warns about it. work_rights is the one sentence an email to that region must contain (checked by check_msgs.py); leave it empty for none. spelling: UK, US or empty.",
+  "regions": {
+    "UK": { "tz": "Europe/London", "window": ["08:00", "08:50"], "spelling": "UK", "work_rights": "" },
+    "Ireland": { "tz": "Europe/Dublin", "window": ["08:00", "08:50"], "spelling": "UK", "work_rights": "" },
+    "Netherlands": { "tz": "Europe/Amsterdam", "window": ["08:00", "08:50"], "spelling": "UK", "work_rights": "" },
+    "Germany": { "tz": "Europe/Berlin", "window": ["08:00", "08:50"], "spelling": "UK", "work_rights": "" }
+  },
+
+  "mail": {
+    "_account": "The account's name exactly as Mail shows it (Mail > Settings > Accounts), for example iCloud or Work.",
+    "account": "",
+    "_from": "The sender line. Empty means: candidate.name <candidate.email>.",
+    "from": "",
+    "inbox": "Inbox",
+    "drafts": "Drafts",
+    "health_check": true,
+    "stale_inbox_hours": 12
+  },
+
+  "_writing": "Your writing rules. check_msgs.py holds every planned email to them. banned entries are case-insensitive regular expressions.",
+  "writing": {
+    "max_words": 170,
+    "banned": ["passionate", "excited", "thrilled", "cutting[- ]edge", "innovative", "world[- ]class", "game[- ]chang", "leverag", "synerg", "seamless", "robust", "groundbreaking", "state[- ]of[- ]the[- ]art", "to whom it may concern", "—"],
+    "opt_out_line": "If this isn't relevant, just let me know and I won't follow up.",
+    "sign_off": "Kind regards,",
+    "salutation_regex": "^Dear ([A-Z][\\w'’-]+|.+ Hiring Team),$",
+    "require_cv_link": true,
+    "require_availability": true,
+    "followup_max_lines": 2,
+    "linkedin_note_max": 300
+  },
+
+  "_replies": "Suggested answers shown in needs-me.md (never sent) and the thank-you saved to Drafts after a polite no. Per language; {their_name}, {name}, {first_name}, {sign_off}, {availability} are filled in.",
+  "replies": {
+    "en": {
+      "thank_you": "Dear {their_name},\n\nThank you for getting back to me, and for letting me know. If anything opens up, I would be glad to hear from you.\n\n{sign_off}\n{name}",
+      "call": "Thank you for getting back to me. I would be glad to talk. [two or three times that suit you, with your time zone]\n\n{sign_off}\n{name}",
+      "decline": "Thank you for getting back to me, and for letting me know.\n\n{sign_off}\n{name}",
+      "reply": "Thank you for getting back to me. [answer]\n\n{sign_off}\n{name}"
+    }
+  },
+
+  "audit": {
+    "mailboxes": ["inbox", "archive"],
+    "sent_mailboxes": ["sent items", "sent messages", "sent", "sent mail"],
+    "_my_addresses": "Every address you send from, so your own emails are never listed as needing you.",
+    "my_addresses": [],
+    "generic_domains": ["gmail.com", "outlook.com", "hotmail.com", "yahoo.com", "icloud.com", "me.com", "proton.me", "protonmail.com"],
+    "first_days": 45
+  },
+
+  "_postings": "tools/scan_postings.py: case-insensitive regular expressions for the title, titles to drop, and places.",
+  "postings": { "title": "intern|placement|off[- ]cycle|trainee", "exclude": "thesis|working student", "places": "london|united kingdom|remote", "end_date": "" },
+
+  "_jev_dir": "Optional: the folder of your jev-job-search copy, so the tracker lists its applications too.",
+  "jev_dir": "",
+
+  "today": { "title": "By hand", "order": ["actions", "replies", "review", "postings", "items", "linkedin", "held"] }
+}

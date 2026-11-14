@@ -1,0 +1,20 @@
+[
+ {
+  "id": "example-1",
+  "company": "Example Ltd",
+  "person": "Sam Sample",
+  "to": "careers@example.com",
+  "domains": ["example.com"],
+  "source_url": "https://example.com/careers",
+  "region": "UK",
+  "slot": "2030-01-14T08:12",
+  "lang": "en",
+  "subject": "Internship enquiry",
+  "body": "Dear Sam,\n\n(Your email, using only facts from profile/facts.md.)\n\nIf this isn't relevant, just let me know and I won't follow up.\n\nKind regards,\nAlex Example",
+  "followup_subject": "Re: Internship enquiry",
+  "followup_body": "Dear Sam,\n\n(One or two lines.)\n\nKind regards,\nAlex Example",
+  "attachments": [],
+  "approved": false,
+  "hold": ""
+ }
+]

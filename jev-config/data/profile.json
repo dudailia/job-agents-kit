@@ -1,0 +1,115 @@
+{
+  "name": {
+    "first": "",
+    "last": ""
+  },
+  "pronouns": "",
+  "dateOfBirth": "",
+  "email": "",
+  "phone": {
+    "national": "",
+    "countryCode": ""
+  },
+  "address": {
+    "line1": "",
+    "city": "",
+    "region": "",
+    "regionCode": "",
+    "postalCode": "",
+    "country": "",
+    "countryCode": ""
+  },
+  "links": {
+    "linkedin": "",
+    "github": "",
+    "website": ""
+  },
+  "education": [
+    {
+      "school": "",
+      "degree": "",
+      "field": "",
+      "minor": "",
+      "startMonth": null,
+      "startYear": null,
+      "gradMonth": null,
+      "gradYear": null,
+      "status": "",
+      "gpa": {
+        "cumulative": null,
+        "major": null,
+        "scale": 4,
+        "volunteer": false
+      }
+    }
+  ],
+  "experience": [
+    {
+      "company": "",
+      "title": "",
+      "location": "",
+      "start": "",
+      "end": "",
+      "current": false,
+      "bullets": []
+    }
+  ],
+  "projects": [
+    {
+      "name": "",
+      "role": "",
+      "start": "",
+      "end": "",
+      "link": "",
+      "bullets": []
+    }
+  ],
+  "skills": {
+    "languages": [],
+    "frameworks": [],
+    "tools": []
+  },
+  "spokenLanguages": [
+    {
+      "name": "",
+      "level": ""
+    }
+  ],
+  "workAuthorization": {
+    "citizenships": [],
+    "authorizedCountries": [],
+    "authorizedWithSponsorshipLater": [],
+    "requiresSponsorshipElsewhere": false,
+    "statement": "",
+    "visaType": "",
+    "visaTypeNames": [],
+    "neverVisaTypes": []
+  },
+  "demographics": {
+    "gender": "",
+    "ethnicity": "",
+    "hispanicOrLatino": "",
+    "veteran": "",
+    "disability": "",
+    "sexualOrientation": "",
+    "transgender": ""
+  },
+  "preferences": {
+    "earliestStart": "",
+    "availability": "",
+    "salaryExpectation": "",
+    "willingToRelocate": "",
+    "remote": "",
+    "preferredLocations": [],
+    "howDidYouHear": "",
+    "references": "",
+    "coverLetter": ""
+  },
+  "resume": {
+    "path": "",
+    "filename": ""
+  },
+  "summary": "",
+  "facts": [],
+  "answers": []
+}

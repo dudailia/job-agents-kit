@@ -1,0 +1,5 @@
+# The kit uses only the Python standard library: Python 3.9 or newer (the python3 that `xcode-select --install` gives you is enough).
+# Nothing to install with pip. It also needs, outside Python:
+#   - macOS with Mail.app, signed in to the account you send from
+#   - Claude Code (`claude`), signed in with a claude.ai subscription, for the research shift and email triage
+#   - optional: jev-job-search (Node.js 22+) for the application side, see jev-config/README.md

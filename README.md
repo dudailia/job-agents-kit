@@ -1,5 +1,7 @@
 # job-agents-kit
 
+**New here? Start with the [setup guide](GUIDE.md)**: what you need, what it costs, and every step from zero.
+
 A kit for a careful, mostly unattended job search on a Mac. While you sleep:
 
 - a research shift (Claude Code) finds firms and postings and plans emails, using only facts you wrote down;
